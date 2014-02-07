@@ -116,16 +116,18 @@ abstract class ServerEngine {
       case ExecutionRequest(command) =>
         // TODO - Figure out how to run this and ack appropriately...
         command :: ServerState.update(state, serverState.withLastCommand(LastCommand(command, serial, client)))
-      case ListenToValue(key) =>
+      case ListenToValue(pkey) =>
         // TODO - We also need to get the value to send to the client...
         //  This only registers the listener, but doesn't actually 
-        SbtToProtocolUtils.protocolToScopedKey(key, state) match {
+        SbtToProtocolUtils.protocolToScopedKey(pkey, state) match {
           case Some(key) =>
             // Schedule the key to run as well as registering the key listener. 
             val extracted = Project.extract(state)
+            val stringValue = extracted.get(SettingKey[Nothing](key.key)).toString
+            client.send(ValueChange(pkey, TaskSuccess(BuildValue(stringValue))))
             extracted.showKey(key) :: ServerState.update(state, serverState.addKeyListener(client, key))
           case None => // Issue a no such key error
-            client.reply(serial, ErrorResponse(s"Unable to find key: $key"))
+            client.reply(serial, ErrorResponse(s"Unable to find key: $pkey"))
             state
         }
       // TODO - This may need to be in an off-band channel. We should be able to respond
