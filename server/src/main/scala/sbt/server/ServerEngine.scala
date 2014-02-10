@@ -123,9 +123,18 @@ abstract class ServerEngine {
           case Some(key) =>
             // Schedule the key to run as well as registering the key listener. 
             val extracted = Project.extract(state)
-            val stringValue = extracted.get(SettingKey[Nothing](key.key)).toString
-            client.send(ValueChange(pkey, TaskSuccess(BuildValue(stringValue))))
-            extracted.showKey(key) :: ServerState.update(state, serverState.addKeyListener(client, key))
+            //            val stringValue = extracted.get(SettingKey[Nothing](key.key)).toString
+            //            client.send(ValueChange(pkey, TaskSuccess(BuildValue(stringValue))))
+
+            val skey = SettingKey(key.key.asInstanceOf[sbt.AttributeKey[Any]]) in key.scope // TODO: anyway to not do the asInstanceOf?
+            val change = settingKeyToProtocolValue(skey, extracted)
+
+            if (SettingCompletions.isSetting(key.key)) {
+              client.send(ValueChange(pkey, change))
+              ServerState.update(state, serverState.addKeyListener(client, key)) // TODO: not sure about that, check or ask Josh
+            } else {
+              extracted.showKey(key) :: ServerState.update(state, serverState.addKeyListener(client, key))
+            }
           case None => // Issue a no such key error
             client.reply(serial, ErrorResponse(s"Unable to find key: $pkey"))
             state
@@ -143,6 +152,11 @@ abstract class ServerEngine {
         client.send(CommandCompletionsResponse(id, completions.get map convertCompletion))
         state
     }
+  }
+
+  def settingKeyToProtocolValue[T](key: SettingKey[T], extracted: Extracted): TaskResult[T] = {
+    val value = extracted.get(key)
+    TaskSuccess(BuildValue(value)(key.key.manifest))
   }
 
   /** This will load/launch the sbt execution engine. */
